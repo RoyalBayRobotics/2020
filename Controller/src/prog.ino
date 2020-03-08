@@ -20,8 +20,8 @@ struct XboxState {
     int16_t leftY;
     int16_t rightX;
     int16_t rightY;
-    int8_t L2;
-    int8_t R2;
+    uint8_t L2;
+    uint8_t R2;
     uint8_t buttons; // MSB | X Y A B left up right down | LSB
     uint8_t analogButtons:4; // MSB | L1 R1 L3 R3 | LSB
 };
