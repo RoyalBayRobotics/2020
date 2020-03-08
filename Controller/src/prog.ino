@@ -14,6 +14,7 @@
 USB usb;
 XBOXRECV xbox(&usb);
 
+#pragma pack(push, 1)
 struct XboxState {
     int16_t leftX;
     int16_t leftY;
@@ -24,6 +25,7 @@ struct XboxState {
     uint8_t buttons; // MSB | X Y A B left up right down | LSB
     uint8_t analogButtons:4; // MSB | L1 R1 L3 R3 | LSB
 };
+#pragma pack(pop)
 
 uint16_t sendCommand(const char* cmd, const char* param) {
     esp8266.sendCommand(cmd, ESP8266_CMD_SETUP, param);
