@@ -4,7 +4,7 @@
 
 #include "common.h"
 
-#define SPEED_THRESH 40
+#define SPEED_THRESH 10
 
 struct HBridgeMotor {
     int pins[2];
@@ -23,7 +23,7 @@ struct HBridgeMotor {
             analogWrite(pins[1], 0);
         } else if(speed < 0) {
             analogWrite(pins[0], 0);
-            analogWrite(pins[1], speed);
+            analogWrite(pins[1], -speed);
         } else {
             analogWrite(pins[0], 0);
             analogWrite(pins[1], 0);
