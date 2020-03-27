@@ -11,6 +11,10 @@
 USB usb;
 XBOXRECV xbox(&usb);
 
+struct {
+    int16_t leftX, leftY, rightX, rightY, L2, R2
+} neutral = {0};
+
 XboxState xboxState(int id) {
     return XboxState {
         .leftX = xbox.getAnalogHat(LeftHatX, id),
@@ -20,13 +24,13 @@ XboxState xboxState(int id) {
         .L2 = xbox.getButtonPress(L2),
         .R2 = xbox.getButtonPress(R2),
         .buttons =
-            xbox.getButtonPress(X, id) << 7 | xbox.getButtonPress(Y, id) << 6 |
-            xbox.getButtonPress(A, id) << 5 | xbox.getButtonPress(B, id) << 4 |
-            xbox.getButtonPress(LEFT, id) << 3 | xbox.getButtonPress(UP, id) << 2 |
-            xbox.getButtonPress(RIGHT, id) << 1 | xbox.getButtonPress(DOWN, id),
+            MASK(xbox.getButtonPress(X, id), X) | MASK(xbox.getButtonPress(Y, id), Y) |
+            MASK(xbox.getButtonPress(A, id), A) | MASK(xbox.getButtonPress(B, id), B) |
+            MASK(xbox.getButtonPress(LEFT, id), LEFT) | MASK(xbox.getButtonPress(UP, id), UP) |
+            MASK(xbox.getButtonPress(RIGHT, id), RIGHT) | xbox.getButtonPress(DOWN, id),
         .analogButtons =
-            xbox.getButtonPress(L1, id) << 3 | xbox.getButtonPress(R1, id) << 2 |
-            xbox.getButtonPress(L3, id) << 1 | xbox.getButtonPress(R3, id),
+            MASK(xbox.getButtonPress(L1, id), L1) | MASK(xbox.getButtonPress(R1, id), R1) |
+            MASK(xbox.getButtonPress(L3, id), L3) | xbox.getButtonPress(R3, id),
     };
 }
 
