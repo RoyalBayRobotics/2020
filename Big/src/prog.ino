@@ -1,10 +1,36 @@
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <SparkFunESP8266WiFi.h>
 
 #include "common.h"
 
 #define SPEED_THRESH 10
+#define SPEED_SLOW 100
+
+#define SERVO_MIN 150
+#define SERVO_MAX 550
+
+#define ARM_MAX 3000
+#define ARM_MARG 300
+
+#define ENCODER_A 2
+#define ENCODER_B 4
+
+#define CLAW 6
+#define WRIST0 5
+#define WRIST1 4
+
+#define FL 0
+#define RL 2
+#define FR 3
+#define RR 4
+#define ARM 5
+
+#define HB0 8, 9
+#define HB1 10, 11
+
+#define BTN 51
 
 struct HBridgeMotor {
     int pins[2];
@@ -31,8 +57,10 @@ struct HBridgeMotor {
     }
 };
 
-Adafruit_MotorShield afms;
 HBridgeMotor *hbMotors[2];
+Adafruit_MotorShield afms;
+Adafruit_PWMServoDriver afsd;
+long encoderCount = 0;
 
 void setup() {
     Serial.begin(9600);
@@ -45,8 +73,23 @@ void setup() {
         motor->run(RELEASE);
     }
 
-    hbMotors[0] = new HBridgeMotor(4, 5);
-    hbMotors[1] = new HBridgeMotor(6, 7);
+    hbMotors[0] = new HBridgeMotor(HB0);
+    hbMotors[1] = new HBridgeMotor(HB1);
+
+    afsd.begin();
+    afsd.setPWMFreq(50);
+
+    // Rotary encoder
+    pinMode(5, OUTPUT); // Used as power for encoder
+    pinMode(3, OUTPUT); // Used as ground for encoder
+    pinMode(ENCODER_A, INPUT);
+    pinMode(ENCODER_B, INPUT);
+    digitalWrite(5, HIGH);
+    digitalWrite(3, LOW);
+    attachInterrupt(digitalPinToInterrupt(ENCODER_A), &encoderIntr, RISING);
+
+    // Safety button
+    pinMode(BTN, INPUT_PULLUP);
 
     esp8266.begin(9600, ESP8266_HARDWARE_SERIAL);
 
@@ -58,6 +101,13 @@ void setup() {
     while(sendCommand("+CIPSTART", "0,\"UDP\",\"192.168.100.1\",8839,8838,0") < 0);
 
     Serial.println("# Connected to controller");
+}
+
+void encoderIntr() {
+    if(digitalRead(ENCODER_B))
+        encoderCount--;
+    else
+        encoderCount++;
 }
 
 void runMotor(int i, int speed) {
@@ -95,18 +145,62 @@ void loop() {
     XboxState xbox = {0};
     int ret = recieveXbox(&xbox);
 
-    int x = mapToByte(xbox.leftX), y = mapToByte(xbox.leftY), z = mapToByte(xbox.rightX);
-
-    if(ret == 0) {
-        runMotor(0, y + x + z);
-        runMotor(4, y - x + z);
-        runMotor(2, y + x - z);
-        runMotor(3, y - x - z);
-    } else {
-        Serial.print("# Disconnected...");
+    if(ret != 0) {
+        Serial.println("# No data...");
         // didn't recieve anything, stop all motors
-        for(int i = 0; i < 4; i++) {
+        for(int i = 0; i < 6; i++) {
             runMotor(i, 0);
         }
+        return;
+    }
+
+    // wheels
+    int x = mapToByte(xbox.leftX),
+        y = mapToByte(xbox.leftY),
+        z = mapToByte(xbox.rightX);
+    runMotor(FL, y + x + z);
+    runMotor(FR, y - x + z);
+    runMotor(RL, y + x - z);
+    runMotor(RR, y - x - z);
+
+    // servo claws and wrist
+    afsd.setPWM(CLAW, 0, map(xbox.L2, -32768, 32767, SERVO_MIN, SERVO_MAX));
+    afsd.setPWM(WRIST0, 0, map(xbox.R2, -32768, 32767, SERVO_MIN, SERVO_MAX));
+
+    // cr servo wrist
+    if(xbox.analogButtons & (MASK(1, L1) | MASK(1, R1))) {
+        if(xbox.analogButtons & MASK(1, L1)) {
+            afsd.setPWM(WRIST1, 0, SERVO_MAX);
+        } else {
+            afsd.setPWM(WRIST1, 0, SERVO_MIN);
+        }
+    } else {
+        afsd.setPWM(WRIST1, 0, 0);
+    }
+
+    // arm safety button
+    bool hit = false;
+    if(digitalRead(BTN) == LOW) { // button pressed
+        encoderCount = 0;
+        hit = true;
+    }
+
+    // arm
+    int movement = mapToByte(xbox.rightY);
+    bool force = xbox.analogButtons & MASK(1, R3) > 0;
+    if(movement < 0) {
+        if(hit || (encoderCount <= 0 && !force))
+            runMotor(ARM, 0);
+        else if(encoderCount < ARM_MARG)
+            runMotor(ARM, max(movement, -SPEED_SLOW));
+        else
+            runMotor(ARM, movement);
+    } else {
+        if(encoderCount >= ARM_MAX && !force)
+            runMotor(ARM, 0);
+        else if(encoderCount > ARM_MAX - ARM_MARG)
+            runMotor(ARM, min(movement, SPEED_SLOW));
+        else
+            runMotor(ARM, movement);
     }
 }
